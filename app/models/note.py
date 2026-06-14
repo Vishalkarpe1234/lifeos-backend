@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Text, JSON, Boolean
+from sqlalchemy import String, Integer, Text, JSON, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.models.base_model import TimestampMixin
@@ -16,6 +16,7 @@ class Note(TimestampMixin, Base):
     __tablename__ = "notes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(String(30), default="markdown")

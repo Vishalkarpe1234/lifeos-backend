@@ -39,7 +39,7 @@ async def get_profile(
 @router.put("/", response_model=ProfileResponse)
 async def update_profile(
     data: ProfileUpdate,
-    current_user=Depends(get_current_admin),
+    current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     profile = await _get_or_create_profile(current_user.id, db)
@@ -54,7 +54,7 @@ async def update_profile(
 @router.post("/photo", response_model=SuccessResponse)
 async def upload_profile_photo(
     file: UploadFile = File(...),
-    current_user=Depends(get_current_admin),
+    current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if file.content_type not in ALLOWED_IMAGE_TYPES:

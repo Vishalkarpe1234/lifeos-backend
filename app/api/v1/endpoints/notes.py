@@ -39,7 +39,7 @@ async def list_notes(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    filters = [Note.is_archived == is_archived]
+    filters = [Note.is_archived == is_archived, Note.user_id == current_user.id]
     if search:
         filters.append(or_(Note.title.ilike(f"%{search}%"), Note.content.ilike(f"%{search}%")))
     if category:
@@ -67,7 +67,7 @@ async def get_note(note_id: int, db: AsyncSession = Depends(get_db), current_use
 
 @router.post("/", status_code=201)
 async def create_note(data: NoteCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
-    note = Note(**data.model_dump())
+    note = Note(**data.model_dump(), user_id=current_user.id)
     if note.content:
         note.word_count = len(note.content.split())
     db.add(note)

@@ -26,6 +26,12 @@ async def run_migrations():
     except Exception:
         pass  # column already exists or create_all already included it
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE notes ADD COLUMN user_id INTEGER REFERENCES users(id)"))
+    except Exception:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

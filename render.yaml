@@ -11,7 +11,7 @@ services:
           name: vishalos-db
           property: connectionString
       - key: SECRET_KEY
-        generateValue: true
+        sync: false
       - key: APP_NAME
         value: VishalOS
       - key: ADMIN_EMAIL

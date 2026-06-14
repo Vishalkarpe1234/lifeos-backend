@@ -137,6 +137,31 @@ async def toggle_user_active(user_id: int, db: AsyncSession = Depends(get_db), a
     return SuccessResponse(message=f"User {'activated' if user.is_active else 'deactivated'}")
 
 
+@router.delete("/users/{user_id}", response_model=SuccessResponse)
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    await db.delete(user)
+    return SuccessResponse(message="User deleted")
+
+
+@router.get("/all-notes")
+async def get_all_notes(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.models.note import Note
+    from sqlalchemy import select, desc
+    notes = (await db.execute(
+        select(Note, User).join(User, Note.user_id == User.id, isouter=True)
+        .order_by(desc(Note.created_at)).limit(200)
+    )).all()
+    return {"items": [{"id": n.id, "title": n.title, "content": n.content,
+                       "user_email": u.email if u else "unknown",
+                       "created_at": str(n.created_at), "is_pinned": n.is_pinned}
+                      for n, u in notes]}
+
+
 @router.get("/logs")
 async def get_activity_logs(
     page: int = 1,

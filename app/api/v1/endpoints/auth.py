@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import datetime, timezone
 
 from app.core.database import get_db
@@ -257,3 +258,41 @@ async def get_me(current_user=Depends(get_current_user)):
 @router.post("/logout", response_model=SuccessResponse)
 async def logout(current_user=Depends(get_current_user)):
     return SuccessResponse(message="Logged out successfully")
+
+
+class ChangeEmailRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+@router.post("/change-email", response_model=SuccessResponse)
+async def change_email(
+    data: ChangeEmailRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(data.password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    existing = (await db.execute(select(User).where(User.email == data.email))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already in use")
+    current_user.email = data.email
+    await db.flush()
+    return SuccessResponse(message="Email updated successfully")
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+@router.delete("/delete-account", response_model=SuccessResponse)
+async def delete_account(
+    data: DeleteAccountRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not verify_password(data.password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    from app.services.email_service import SUPER_ADMIN_EMAIL
+    if current_user.email == SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=400, detail="Cannot delete admin account")
+    await db.delete(current_user)
+    return SuccessResponse(message="Account deleted")
