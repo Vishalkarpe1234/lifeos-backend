@@ -5,7 +5,7 @@ import secrets
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Vishal Karpe Professional LifeOS"
+    APP_NAME: str = "VishalOS"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     DATABASE_URL: str = "postgresql+asyncpg://lifeos_user:lifeos_password@localhost:5432/lifeos_db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def fix_db_url(cls, v):
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
 

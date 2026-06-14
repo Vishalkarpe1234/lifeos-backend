@@ -5,26 +5,26 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
-import aiosqlite
 
 from app.core.config import settings
-from app.core.database import create_tables
+from app.core.database import create_tables, engine
 from app.api.v1.router import api_router
 from app.utils.seed import seed_initial_data
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 async def run_migrations():
-    db_path = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
-    async with aiosqlite.connect(db_path) as db:
-        try:
-            await db.execute("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 1")
-            await db.commit()
+    is_sqlite = "sqlite" in str(engine.url)
+    default_val = "1" if is_sqlite else "TRUE"
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(f"ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT {default_val}"))
             logger.info("Migration: added email_verified column")
-        except Exception:
-            pass  # column already exists
+    except Exception:
+        pass  # column already exists or create_all already included it
 
 
 @asynccontextmanager

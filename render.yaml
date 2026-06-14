@@ -1,24 +1,37 @@
 services:
   - type: web
-    name: lifeos-backend
+    name: vishalos-backend
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     plan: free
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: vishalos-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      - key: APP_NAME
+        value: VishalOS
       - key: ADMIN_EMAIL
-        value: admin@lifeos.app
+        value: karpevishal2712001@gmail.com
       - key: ADMIN_PASSWORD
-        sync: false
+        value: Vishal@123
       - key: DEBUG
         value: "false"
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
+      - key: STORAGE_TYPE
+        value: local
+      - key: LOCAL_STORAGE_PATH
+        value: /tmp/storage
       - key: PYTHON_VERSION
-        value: "3.12.0"
+        value: "3.11.0"
+
+databases:
+  - name: vishalos-db
+    databaseName: vishalos
+    plan: free
