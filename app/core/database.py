@@ -14,6 +14,7 @@ NAMING_CONVENTION = {
 metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_is_local_pg = any(h in settings.DATABASE_URL for h in ("localhost", "127.0.0.1"))
 
 if _is_sqlite:
     from sqlalchemy.pool import StaticPool
@@ -24,14 +25,8 @@ if _is_sqlite:
         poolclass=StaticPool,
     )
 else:
-    _connect_args = {}
-    # Neon and other hosted PostgreSQL providers require SSL
-    if "neon.tech" in settings.DATABASE_URL or "sslmode=require" in settings.DATABASE_URL:
-        import ssl as _ssl
-        _ssl_ctx = _ssl.create_default_context()
-        _ssl_ctx.check_hostname = False
-        _ssl_ctx.verify_mode = _ssl.CERT_NONE
-        _connect_args["ssl"] = _ssl_ctx
+    # Cloud PostgreSQL (Neon, Render, etc.) requires SSL; local does not
+    _connect_args = {} if _is_local_pg else {"ssl": "require"}
     engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
