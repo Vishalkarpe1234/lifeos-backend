@@ -36,7 +36,7 @@ async def seed_initial_data():
                     state="Maharashtra",
                     country="India",
                     phone="+91 9130931719",
-                    email_public="karpevishal2712001@gmail.com",
+                    email_public="hivetech1010@gmail.com",
                     linkedin_url="https://www.linkedin.com/in/vishal-karpe1719",
                     blog_url="karpevishal.blogspot.com",
                     github_username="vishalkarpe1234",
@@ -88,22 +88,6 @@ async def seed_initial_data():
             else:
                 logger.info("Admin user already exists, skipping seed")
 
-            # Seed Vishal's personal login account
-            personal_email = "karpevishal2712001@gmail.com"
-            personal_exists = (await db.execute(select(User).where(User.email == personal_email))).scalar_one_or_none()
-            if not personal_exists:
-                personal_user = User(
-                    email=personal_email,
-                    hashed_password=get_password_hash("Vishal@123"),
-                    is_admin=True,
-                    is_active=True,
-                    totp_enabled=False,
-                    biometric_enabled=False,
-                    session_timeout_minutes=30,
-                )
-                db.add(personal_user)
-                await db.commit()
-                logger.info(f"Personal user seeded: {personal_email}")
 
         except Exception as e:
             await db.rollback()

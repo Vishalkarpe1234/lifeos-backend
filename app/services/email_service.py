@@ -11,7 +11,7 @@ from sqlalchemy import select, and_
 
 logger = logging.getLogger(__name__)
 
-SUPER_ADMIN_EMAIL = "karpevishal2712001@gmail.com"
+SUPER_ADMIN_EMAIL = "hivetech1010@gmail.com"
 
 
 def generate_otp() -> str:
