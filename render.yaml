@@ -15,9 +15,9 @@ services:
       - key: APP_NAME
         value: VishalOS
       - key: ADMIN_EMAIL
-        value: karpevishal2712001@gmail.com
+        sync: false
       - key: ADMIN_PASSWORD
-        value: Vishal@123
+        sync: false
       - key: DEBUG
         value: "false"
       - key: ALLOWED_ORIGINS
