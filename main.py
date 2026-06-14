@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+import aiosqlite
 
 from app.core.config import settings
 from app.core.database import create_tables
@@ -15,10 +16,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def run_migrations():
+    db_path = settings.DATABASE_URL.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
+    async with aiosqlite.connect(db_path) as db:
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 1")
+            await db.commit()
+            logger.info("Migration: added email_verified column")
+        except Exception:
+            pass  # column already exists
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     await create_tables()
+    await run_migrations()
     await seed_initial_data()
     Path(settings.LOCAL_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
     yield

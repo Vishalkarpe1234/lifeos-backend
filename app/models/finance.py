@@ -49,8 +49,8 @@ class Budget(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
-class Goal(TimestampMixin, Base):
-    __tablename__ = "goals"
+class FinanceGoal(TimestampMixin, Base):
+    __tablename__ = "finance_goals"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)

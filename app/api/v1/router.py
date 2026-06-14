@@ -2,7 +2,8 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, profile, research, tasks, notes,
     ai, dashboard, projects, finance, habits, media, admin,
-    teaching, journal, bookmarks, certificates
+    teaching, journal, bookmarks, certificates,
+    goals, calendar, health, learning, contacts, timeline, voice_notes, search,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -23,3 +24,11 @@ api_router.include_router(teaching.router)
 api_router.include_router(journal.router)
 api_router.include_router(bookmarks.router)
 api_router.include_router(certificates.router)
+api_router.include_router(goals.router)
+api_router.include_router(calendar.router)
+api_router.include_router(health.router)
+api_router.include_router(learning.router)
+api_router.include_router(contacts.router)
+api_router.include_router(timeline.router)
+api_router.include_router(voice_notes.router)
+api_router.include_router(search.router)

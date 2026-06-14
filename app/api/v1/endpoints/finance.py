@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.models.finance import Expense, ExpenseCategory, Budget, Goal
+from app.models.finance import Expense, ExpenseCategory, Budget, FinanceGoal as Goal
 from app.schemas.common import SuccessResponse
 
 router = APIRouter(prefix="/finance", tags=["Finance"])

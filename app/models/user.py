@@ -14,6 +14,7 @@ class User(TimestampMixin, Base):
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     totp_secret: Mapped[str | None] = mapped_column(String(32), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     biometric_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
