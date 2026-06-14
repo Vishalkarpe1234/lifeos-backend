@@ -11,7 +11,9 @@ from app.core.security import get_password_hash
 from app.models.settings import AppSettings, Widget
 from app.models.analytics import ActivityLog
 from app.models.user import User
+from app.models.note import Note
 from app.schemas.common import SuccessResponse
+from sqlalchemy import desc
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -150,8 +152,6 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), admin=De
 
 @router.get("/all-notes")
 async def get_all_notes(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
-    from app.models.note import Note
-    from sqlalchemy import select, desc
     notes = (await db.execute(
         select(Note, User).join(User, Note.user_id == User.id, isouter=True)
         .order_by(desc(Note.created_at)).limit(200)

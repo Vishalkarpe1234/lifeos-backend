@@ -36,9 +36,18 @@ async def run_migrations():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    await create_tables()
-    await run_migrations()
-    await seed_initial_data()
+    try:
+        await create_tables()
+    except Exception as e:
+        logger.error(f"create_tables error (non-fatal): {e}")
+    try:
+        await run_migrations()
+    except Exception as e:
+        logger.error(f"run_migrations error (non-fatal): {e}")
+    try:
+        await seed_initial_data()
+    except Exception as e:
+        logger.error(f"seed error (non-fatal): {e}")
     Path(settings.LOCAL_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
     yield
     logger.info("Shutting down...")
