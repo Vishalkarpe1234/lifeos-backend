@@ -18,8 +18,20 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def fix_db_url(cls, v):
-        if isinstance(v, str) and v.startswith("postgresql://"):
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if not isinstance(v, str):
+            return v
+        # Convert standard postgresql:// to asyncpg dialect
+        if v.startswith("postgresql://"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        # Strip URL params not supported by asyncpg (Neon adds these)
+        if v.startswith("postgresql+asyncpg://"):
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            parsed = urlparse(v)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            for unsupported in ["channel_binding", "options"]:
+                params.pop(unsupported, None)
+            new_query = urlencode({k: vals[0] for k, vals in params.items()})
+            v = urlunparse(parsed._replace(query=new_query))
         return v
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20

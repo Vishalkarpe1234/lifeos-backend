@@ -24,12 +24,21 @@ if _is_sqlite:
         poolclass=StaticPool,
     )
 else:
+    _connect_args = {}
+    # Neon and other hosted PostgreSQL providers require SSL
+    if "neon.tech" in settings.DATABASE_URL or "sslmode=require" in settings.DATABASE_URL:
+        import ssl as _ssl
+        _ssl_ctx = _ssl.create_default_context()
+        _ssl_ctx.check_hostname = False
+        _ssl_ctx.verify_mode = _ssl.CERT_NONE
+        _connect_args["ssl"] = _ssl_ctx
     engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
         max_overflow=settings.DATABASE_MAX_OVERFLOW,
         echo=settings.DEBUG,
         pool_pre_ping=True,
+        connect_args=_connect_args,
     )
 
 AsyncSessionLocal = async_sessionmaker(
