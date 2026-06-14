@@ -26,7 +26,7 @@ if _is_sqlite:
     )
 else:
     # Cloud PostgreSQL (Neon, Render, etc.) requires SSL; local does not
-    _connect_args = {} if _is_local_pg else {"ssl": "require"}
+    _connect_args = {} if _is_local_pg else {"ssl": True}
     engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
