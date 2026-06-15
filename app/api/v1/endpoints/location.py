@@ -30,7 +30,13 @@ async def submit_location(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    ts = data.timestamp or datetime.now(timezone.utc).isoformat()
+    if data.timestamp:
+        try:
+            ts = datetime.fromisoformat(data.timestamp)
+        except ValueError:
+            ts = datetime.now(timezone.utc)
+    else:
+        ts = datetime.now(timezone.utc)
     await db.execute(text("""
         INSERT INTO user_locations (user_id, latitude, longitude, accuracy, timestamp)
         VALUES (:uid, :lat, :lng, :acc, :ts)
