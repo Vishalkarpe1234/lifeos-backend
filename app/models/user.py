@@ -21,6 +21,7 @@ class User(TimestampMixin, Base):
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     session_timeout_minutes: Mapped[int] = mapped_column(Integer, default=30)
     location_permission: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
 
     profile: Mapped["Profile"] = relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
 

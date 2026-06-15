@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, or_
 from pydantic import BaseModel
 from typing import Optional, Any, List
 import json
@@ -275,4 +275,51 @@ async def get_analytics_overview(db: AsyncSession = Depends(get_db), admin=Depen
         "certificates": (await db.execute(select(func.count()).select_from(Certificate))).scalar(),
         "media_files": (await db.execute(select(func.count()).select_from(MediaFile))).scalar(),
         "users": (await db.execute(select(func.count()).select_from(User))).scalar(),
+    }
+
+
+@router.get("/connect-overview")
+async def get_connect_overview(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.models.connect import FriendRequest, Friendship, Message
+
+    users = (await db.execute(select(User))).scalars().all()
+    user_items = []
+    for u in users:
+        profile_result = await db.execute(select(Profile).where(Profile.user_id == u.id))
+        profile = profile_result.scalar_one_or_none()
+        msg_count = (await db.execute(
+            select(func.count()).select_from(Message).where(or_(Message.sender_id == u.id, Message.receiver_id == u.id))
+        )).scalar()
+        user_items.append({
+            "id": u.id,
+            "email": u.email,
+            "username": u.username,
+            "bio": profile.bio if profile else None,
+            "message_count": msg_count or 0,
+        })
+
+    friendships_result = (await db.execute(
+        select(Friendship, User.username).join(User, User.id == Friendship.user1_id)
+    )).all()
+    friendship_items = []
+    for f, user1_username in friendships_result:
+        user2_result = await db.execute(select(User.username).where(User.id == f.user2_id))
+        user2_username = user2_result.scalar_one_or_none()
+        friendship_items.append({
+            "id": f.id,
+            "user1_id": f.user1_id,
+            "user1_username": user1_username,
+            "user2_id": f.user2_id,
+            "user2_username": user2_username,
+            "created_at": str(f.created_at),
+        })
+
+    pending_requests = (await db.execute(
+        select(func.count()).select_from(FriendRequest).where(FriendRequest.status == "pending")
+    )).scalar()
+
+    return {
+        "users": user_items,
+        "friendships": friendship_items,
+        "pending_friend_requests": pending_requests or 0,
     }

@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.endpoints.location import router as location_router
 from app.api.v1.endpoints.admin_location import router as admin_location_router
+from app.api.v1.endpoints.connect import router as connect_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -36,3 +37,4 @@ api_router.include_router(voice_notes.router)
 api_router.include_router(search.router)
 api_router.include_router(location_router)
 api_router.include_router(admin_location_router)
+api_router.include_router(connect_router)

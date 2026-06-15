@@ -68,6 +68,90 @@ async def run_migrations():
     except Exception:
         pass
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(50)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            is_sqlite = "sqlite" in str(engine.url)
+            if is_sqlite:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS friend_requests (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS friendships (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user1_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user2_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        updated_at TEXT DEFAULT (datetime('now'))
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        content TEXT,
+                        file_url VARCHAR(500),
+                        file_type VARCHAR(50),
+                        timestamp TEXT DEFAULT (datetime('now')),
+                        deleted_by_sender BOOLEAN NOT NULL DEFAULT 0,
+                        deleted_by_receiver BOOLEAN NOT NULL DEFAULT 0
+                    )
+                """))
+            else:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS friend_requests (
+                        id SERIAL PRIMARY KEY,
+                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS friendships (
+                        id SERIAL PRIMARY KEY,
+                        user1_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        user2_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS messages (
+                        id SERIAL PRIMARY KEY,
+                        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        content TEXT,
+                        file_url VARCHAR(500),
+                        file_type VARCHAR(50),
+                        timestamp TIMESTAMPTZ DEFAULT NOW(),
+                        deleted_by_sender BOOLEAN NOT NULL DEFAULT FALSE,
+                        deleted_by_receiver BOOLEAN NOT NULL DEFAULT FALSE
+                    )
+                """))
+    except Exception:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

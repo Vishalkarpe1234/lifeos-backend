@@ -22,6 +22,7 @@ from app.models.health_entry import HealthEntry
 from app.models.learning_item import LearningItem
 from app.models.contact import Contact
 from app.models.timeline_entry import TimelineEntry
+from app.models.connect import FriendRequest, Friendship, Message
 
 __all__ = [
     "User", "Profile",
@@ -47,4 +48,5 @@ __all__ = [
     "LearningItem",
     "Contact",
     "TimelineEntry",
+    "FriendRequest", "Friendship", "Message",
 ]
