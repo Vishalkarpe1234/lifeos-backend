@@ -152,6 +152,16 @@ async def run_migrations():
     except Exception:
         pass
 
+    try:
+        async with engine.begin() as conn:
+            is_sqlite = "sqlite" in str(engine.url)
+            if is_sqlite:
+                await conn.execute(text("ALTER TABLE messages ADD COLUMN is_read BOOLEAN NOT NULL DEFAULT 0"))
+            else:
+                await conn.execute(text("ALTER TABLE messages ADD COLUMN is_read BOOLEAN NOT NULL DEFAULT FALSE"))
+    except Exception:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

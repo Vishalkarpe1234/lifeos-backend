@@ -1,9 +1,9 @@
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.dependencies import get_current_user
@@ -12,11 +12,13 @@ from app.models.user import User
 from app.models.profile import Profile
 from app.models.connect import FriendRequest, Friendship, Message
 from app.schemas.common import SuccessResponse
+from app.services.storage_service import storage_service
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/connect", tags=["Connect"])
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,30}$")
+ALLOWED_CHAT_FILE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 
 
 # ---------------------------------------------------------------------------
@@ -346,9 +348,67 @@ async def get_messages(friend_id: int, current_user=Depends(get_current_user), d
             "file_url": m.file_url,
             "file_type": m.file_type,
             "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+            "is_read": m.is_read,
         }
         for m in messages
     ]}
+
+
+@router.post("/messages/{friend_id}/read", response_model=SuccessResponse)
+async def mark_messages_read(friend_id: int, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Message).where(
+            Message.sender_id == friend_id,
+            Message.receiver_id == current_user.id,
+            Message.is_read.is_(False),
+        )
+    )
+    for m in result.scalars().all():
+        m.is_read = True
+    await db.flush()
+    return SuccessResponse(message="Messages marked as read")
+
+
+# ---------------------------------------------------------------------------
+# Notifications (in-app, polling-based)
+# ---------------------------------------------------------------------------
+
+@router.get("/notifications")
+async def get_notifications(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    pending_result = await db.execute(
+        select(func.count()).select_from(FriendRequest).where(
+            FriendRequest.receiver_id == current_user.id, FriendRequest.status == "pending"
+        )
+    )
+    pending_requests = pending_result.scalar() or 0
+
+    unread_result = await db.execute(
+        select(Message.sender_id, func.count()).where(
+            Message.receiver_id == current_user.id,
+            Message.is_read.is_(False),
+            Message.deleted_by_receiver.is_(False),
+        ).group_by(Message.sender_id)
+    )
+    unread_by_friend = {str(sender_id): count for sender_id, count in unread_result.all()}
+    unread_messages = sum(unread_by_friend.values())
+
+    return {
+        "pending_requests": pending_requests,
+        "unread_messages": unread_messages,
+        "unread_by_friend": unread_by_friend,
+    }
+
+
+# ---------------------------------------------------------------------------
+# File upload (images for chat)
+# ---------------------------------------------------------------------------
+
+@router.post("/upload")
+async def upload_chat_file(file: UploadFile = File(...), current_user=Depends(get_current_user)):
+    if file.content_type not in ALLOWED_CHAT_FILE_TYPES:
+        raise HTTPException(status_code=400, detail="Only images are supported")
+    result = await storage_service.upload_file(file, subfolder="chat", allowed_types=ALLOWED_CHAT_FILE_TYPES)
+    return {"file_url": result["file_url"], "file_type": result["file_type"]}
 
 
 @router.delete("/messages/{friend_id}", response_model=SuccessResponse)
@@ -420,6 +480,7 @@ async def connect_websocket(websocket: WebSocket, token: str = Query(...)):
                         "file_url": msg.file_url,
                         "file_type": msg.file_type,
                         "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                        "is_read": msg.is_read,
                     },
                 }
                 await manager.send_personal(receiver_id, payload)

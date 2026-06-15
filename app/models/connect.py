@@ -34,3 +34,4 @@ class Message(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     deleted_by_sender: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_by_receiver: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
