@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import MetaData
 from app.core.config import settings
+import ssl
 
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
@@ -25,8 +26,15 @@ if _is_sqlite:
         poolclass=StaticPool,
     )
 else:
-    # Cloud PostgreSQL (Neon, Render, etc.) requires SSL; local does not
-    _connect_args = {} if _is_local_pg else {"ssl": True}
+    # Cloud PostgreSQL (Render managed, Neon, etc.) — use SSL but skip cert verify
+    # Render uses self-signed certs; CERT_NONE avoids SSL: CERTIFICATE_VERIFY_FAILED
+    if _is_local_pg:
+        _connect_args = {}
+    else:
+        _ssl_ctx = ssl.create_default_context()
+        _ssl_ctx.check_hostname = False
+        _ssl_ctx.verify_mode = ssl.CERT_NONE
+        _connect_args = {"ssl": _ssl_ctx}
     engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
