@@ -83,7 +83,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         hashed_password=get_password_hash(request.password),
         is_active=True,
         is_admin=False,
-        email_verified=False,
+        email_verified=True,
     )
     db.add(user)
     await db.flush()
@@ -91,10 +91,9 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     profile = Profile(user_id=user.id, full_name=request.full_name)
     db.add(profile)
 
-    await create_and_send_otp(db, email, "verify_email")
     await db.commit()
 
-    return SuccessResponse(message=f"Account created. OTP sent to {email}.")
+    return SuccessResponse(message="Registration successful. Please login.")
 
 
 @router.post("/verify-email", response_model=SuccessResponse)

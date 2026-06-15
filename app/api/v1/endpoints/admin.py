@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Optional, Any, List
 import json
 
 from app.core.database import get_db
@@ -12,6 +12,7 @@ from app.models.settings import AppSettings, Widget
 from app.models.analytics import ActivityLog
 from app.models.user import User
 from app.models.note import Note
+from app.models.profile import Profile
 from app.schemas.common import SuccessResponse
 from sqlalchemy import desc
 
@@ -111,8 +112,17 @@ async def delete_widget(widget_id: int, db: AsyncSession = Depends(get_db), admi
 
 @router.get("/users")
 async def list_users(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from sqlalchemy import func
     users = (await db.execute(select(User))).scalars().all()
-    return {"items": [{"id": u.id, "email": u.email, "is_admin": u.is_admin, "is_active": u.is_active, "last_login": u.last_login} for u in users]}
+    result = []
+    for u in users:
+        note_count = (await db.execute(select(func.count()).select_from(Note).where(Note.user_id == u.id))).scalar()
+        result.append({
+            "id": u.id, "email": u.email, "is_admin": u.is_admin,
+            "is_active": u.is_active, "last_login": str(u.last_login) if u.last_login else None,
+            "created_at": str(u.created_at), "note_count": note_count or 0
+        })
+    return {"items": result}
 
 
 @router.post("/users", status_code=201)
@@ -148,6 +158,78 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), admin=De
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     await db.delete(user)
     return SuccessResponse(message="User deleted")
+
+
+class BulkDeleteRequest(BaseModel):
+    user_ids: List[int]
+
+@router.post("/users/bulk-delete", response_model=SuccessResponse)
+async def bulk_delete_users(data: BulkDeleteRequest, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    for uid in data.user_ids:
+        if uid == admin.id:
+            continue
+        user = (await db.execute(select(User).where(User.id == uid))).scalar_one_or_none()
+        if user:
+            await db.delete(user)
+    return SuccessResponse(message=f"Deleted {len(data.user_ids)} users")
+
+
+@router.get("/users/{user_id}/notes")
+async def get_user_notes(user_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    notes = (await db.execute(select(Note).where(Note.user_id == user_id).order_by(desc(Note.created_at)))).scalars().all()
+    return {"items": [{"id": n.id, "title": n.title, "content": n.content, "is_pinned": n.is_pinned, "created_at": str(n.created_at), "updated_at": str(n.updated_at)} for n in notes]}
+
+
+class UserEdit(BaseModel):
+    email: Optional[str] = None
+    is_active: Optional[bool] = None
+    full_name: Optional[str] = None
+
+@router.patch("/users/{user_id}", response_model=SuccessResponse)
+async def edit_user(user_id: int, data: UserEdit, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if data.email:
+        user.email = data.email.lower().strip()
+    if data.is_active is not None:
+        user.is_active = data.is_active
+    if data.full_name:
+        profile = (await db.execute(select(Profile).where(Profile.user_id == user_id))).scalar_one_or_none()
+        if profile:
+            profile.full_name = data.full_name
+        else:
+            db.add(Profile(user_id=user_id, full_name=data.full_name))
+    await db.flush()
+    return SuccessResponse(message="User updated")
+
+
+class AdminPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/profile/password", response_model=SuccessResponse)
+async def admin_change_password(data: AdminPasswordChange, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.core.security import verify_password, get_password_hash
+    if not verify_password(data.current_password, admin.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password incorrect")
+    admin.hashed_password = get_password_hash(data.new_password)
+    await db.flush()
+    return SuccessResponse(message="Password changed")
+
+
+class AdminEmailChange(BaseModel):
+    new_email: str
+    current_password: str
+
+@router.patch("/profile/email", response_model=SuccessResponse)
+async def admin_change_email(data: AdminEmailChange, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.core.security import verify_password
+    if not verify_password(data.current_password, admin.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    admin.email = data.new_email.lower().strip()
+    await db.flush()
+    return SuccessResponse(message="Email changed")
 
 
 @router.get("/all-notes")
