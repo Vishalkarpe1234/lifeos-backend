@@ -87,3 +87,13 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": settings.APP_VERSION}
+
+
+@app.get("/db-health")
+async def db_health():
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"status": "error", "db": str(e)[:100]})

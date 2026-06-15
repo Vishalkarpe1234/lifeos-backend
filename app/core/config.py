@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     def fix_db_url(cls, v):
         if not isinstance(v, str):
             return v
-        # Convert standard postgresql:// to asyncpg dialect
-        if v.startswith("postgresql://"):
+        # Render gives postgres://, Neon gives postgresql:// — both need asyncpg dialect
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
         # asyncpg does not accept libpq URL params — strip everything after ?
         # SSL is handled via connect_args in database.py instead

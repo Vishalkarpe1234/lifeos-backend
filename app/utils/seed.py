@@ -15,6 +15,12 @@ async def seed_initial_data():
     async with AsyncSessionLocal() as db:
         try:
             existing = (await db.execute(select(User).where(User.email == settings.ADMIN_EMAIL))).scalar_one_or_none()
+            if existing:
+                from app.core.security import verify_password, get_password_hash as _gph
+                if not verify_password(settings.ADMIN_PASSWORD, existing.hashed_password):
+                    existing.hashed_password = _gph(settings.ADMIN_PASSWORD)
+                    await db.commit()
+                    logger.info("Admin password synced from env")
             if not existing:
                 admin = User(
                     email=settings.ADMIN_EMAIL,
