@@ -120,7 +120,8 @@ async def list_users(db: AsyncSession = Depends(get_db), admin=Depends(get_curre
         result.append({
             "id": u.id, "email": u.email, "is_admin": u.is_admin,
             "is_active": u.is_active, "last_login": str(u.last_login) if u.last_login else None,
-            "created_at": str(u.created_at), "note_count": note_count or 0
+            "created_at": str(u.created_at), "note_count": note_count or 0,
+            "location_permission": getattr(u, 'location_permission', False) or False,
         })
     return {"items": result}
 

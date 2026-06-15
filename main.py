@@ -32,6 +32,42 @@ async def run_migrations():
     except Exception:
         pass
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN location_permission BOOLEAN DEFAULT FALSE"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            is_sqlite = "sqlite" in str(engine.url)
+            if is_sqlite:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS user_locations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        accuracy REAL,
+                        timestamp TEXT NOT NULL,
+                        created_at TEXT DEFAULT (datetime('now'))
+                    )
+                """))
+            else:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS user_locations (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        latitude DOUBLE PRECISION NOT NULL,
+                        longitude DOUBLE PRECISION NOT NULL,
+                        accuracy DOUBLE PRECISION,
+                        timestamp TIMESTAMPTZ NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+    except Exception:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
