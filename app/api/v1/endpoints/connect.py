@@ -85,11 +85,14 @@ class ConnectionManager:
             conns.discard(websocket)
             if not conns:
                 del self.active[user_id]
-        for room_id, members in list(self.rooms.items()):
-            if user_id in members:
-                members.discard(user_id)
-                if not members:
-                    del self.rooms[room_id]
+                # Only remove from rooms when ALL connections for this user are gone.
+                # Without this guard a background-service WS reconnect would evict the
+                # user from any active call room, triggering a spurious peer_left.
+                for room_id, members in list(self.rooms.items()):
+                    if user_id in members:
+                        members.discard(user_id)
+                        if not members:
+                            del self.rooms[room_id]
 
     async def send_personal(self, user_id: int, data: dict):
         for ws in list(self.active.get(user_id, [])):
@@ -636,10 +639,13 @@ async def connect_websocket(websocket: WebSocket, token: str = Query(...)):
     except WebSocketDisconnect:
         rooms_before = [r for r, members in manager.rooms.items() if user_id in members]
         manager.disconnect(user_id, websocket)
+        # Only tell peers the user left if they have no other active connections
+        # (background service WS reconnects must not end ongoing calls).
         for room_id in rooms_before:
-            for member_id in manager.room_members(room_id):
-                await manager.send_personal(member_id, {
-                    "type": "peer_left", "from": user_id, "room_id": room_id,
-                })
+            if user_id not in manager.room_members(room_id):
+                for member_id in manager.room_members(room_id):
+                    await manager.send_personal(member_id, {
+                        "type": "peer_left", "from": user_id, "room_id": room_id,
+                    })
     except Exception:
         manager.disconnect(user_id, websocket)
