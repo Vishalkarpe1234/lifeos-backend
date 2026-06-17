@@ -278,6 +278,51 @@ async def get_analytics_overview(db: AsyncSession = Depends(get_db), admin=Depen
     }
 
 
+@router.get("/tasks")
+async def admin_all_tasks(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_admin)):
+    from app.models.task import Task
+    items = (await db.execute(select(Task).order_by(Task.created_at.desc()).limit(500))).scalars().all()
+    return {"items": [{"id": t.id, "title": t.title, "priority": t.priority, "status": t.status,
+        "is_completed": t.is_completed, "due_date": t.due_date.isoformat() if t.due_date else None,
+        "created_at": t.created_at.isoformat() if t.created_at else None} for t in items], "total": len(items)}
+
+
+@router.get("/habits")
+async def admin_all_habits(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_admin)):
+    from app.models.habit import Habit
+    items = (await db.execute(select(Habit).where(Habit.is_active == True).order_by(Habit.created_at.desc()))).scalars().all()
+    return {"items": [{"id": h.id, "name": h.name, "streak_current": h.streak_current,
+        "streak_longest": h.streak_longest, "frequency": h.frequency,
+        "created_at": h.created_at.isoformat() if h.created_at else None} for h in items]}
+
+
+@router.get("/journals")
+async def admin_all_journals(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_admin)):
+    from app.models.journal import JournalEntry
+    items = (await db.execute(select(JournalEntry).order_by(JournalEntry.date.desc()).limit(200))).scalars().all()
+    return {"items": [{"id": e.id, "title": e.title, "date": e.date.isoformat() if e.date else None,
+        "mood": e.mood, "created_at": e.created_at.isoformat() if e.created_at else None} for e in items]}
+
+
+@router.get("/analytics")
+async def admin_analytics(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_admin)):
+    from app.models.task import Task
+    from app.models.habit import Habit
+    from app.models.journal import JournalEntry
+    from app.models.goal import Goal
+    from app.models.project import Project
+    total_users = (await db.execute(select(func.count()).select_from(User))).scalar()
+    total_tasks = (await db.execute(select(func.count()).select_from(Task))).scalar()
+    completed_tasks = (await db.execute(select(func.count()).select_from(Task).where(Task.is_completed == True))).scalar()
+    total_habits = (await db.execute(select(func.count()).select_from(Habit))).scalar()
+    total_journals = (await db.execute(select(func.count()).select_from(JournalEntry))).scalar()
+    total_goals = (await db.execute(select(func.count()).select_from(Goal))).scalar()
+    total_projects = (await db.execute(select(func.count()).select_from(Project))).scalar()
+    return {"total_users": total_users, "total_tasks": total_tasks, "completed_tasks": completed_tasks,
+        "total_habits": total_habits, "total_journals": total_journals,
+        "total_goals": total_goals, "total_projects": total_projects}
+
+
 @router.get("/connect-overview")
 async def get_connect_overview(db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
     from app.models.connect import FriendRequest, Friendship, Message

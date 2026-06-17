@@ -11,6 +11,8 @@ from app.core.database import create_tables, engine
 from app.api.v1.router import api_router
 from app.utils.seed import seed_initial_data
 from sqlalchemy import text
+from app.models.focus import FocusSession  # noqa: F401 — ensures table is created
+from app.models.snippet import CodeSnippet  # noqa: F401 — ensures table is created
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
