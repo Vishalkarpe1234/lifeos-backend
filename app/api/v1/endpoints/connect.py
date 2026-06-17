@@ -73,7 +73,6 @@ async def _relationship_status(current_id: int, other_id: int, db: AsyncSession)
 class ConnectionManager:
     def __init__(self):
         self.active: dict[int, set[WebSocket]] = {}
-        self.rooms: dict[str, set[int]] = {}
 
     async def connect(self, user_id: int, websocket: WebSocket):
         await websocket.accept()
@@ -85,14 +84,6 @@ class ConnectionManager:
             conns.discard(websocket)
             if not conns:
                 del self.active[user_id]
-                # Only remove from rooms when ALL connections for this user are gone.
-                # Without this guard a background-service WS reconnect would evict the
-                # user from any active call room, triggering a spurious peer_left.
-                for room_id, members in list(self.rooms.items()):
-                    if user_id in members:
-                        members.discard(user_id)
-                        if not members:
-                            del self.rooms[room_id]
 
     async def send_personal(self, user_id: int, data: dict):
         for ws in list(self.active.get(user_id, [])):
@@ -103,21 +94,6 @@ class ConnectionManager:
 
     def is_online(self, user_id: int) -> bool:
         return user_id in self.active
-
-    def join_room(self, room_id: str, user_id: int) -> set[int]:
-        members = self.rooms.setdefault(room_id, set())
-        members.add(user_id)
-        return members
-
-    def leave_room(self, room_id: str, user_id: int):
-        members = self.rooms.get(room_id)
-        if members:
-            members.discard(user_id)
-            if not members:
-                del self.rooms[room_id]
-
-    def room_members(self, room_id: str) -> set[int]:
-        return self.rooms.get(room_id, set())
 
 
 manager = ConnectionManager()
@@ -483,6 +459,8 @@ async def connect_websocket(websocket: WebSocket, token: str = Query(...)):
                     if not await _are_friends(user_id, receiver_id, db):
                         await websocket.send_json({"type": "error", "detail": "Not friends"})
                         continue
+                    sender_result = await db.execute(select(User).where(User.id == user_id))
+                    sender = sender_result.scalar_one_or_none()
                     msg = Message(
                         sender_id=user_id,
                         receiver_id=receiver_id,
@@ -505,6 +483,7 @@ async def connect_websocket(websocket: WebSocket, token: str = Query(...)):
                         "file_type": msg.file_type,
                         "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
                         "is_read": msg.is_read,
+                        "from_username": sender.username if sender else None,
                     },
                 }
                 await manager.send_personal(receiver_id, payload)
@@ -518,134 +497,7 @@ async def connect_websocket(websocket: WebSocket, token: str = Query(...)):
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
 
-            # --- WebRTC call / meeting signaling ---------------------------
-
-            elif msg_type == "call_invite":
-                to_id = data.get("to")
-                room_id = data.get("room_id")
-                call_type = data.get("call_type", "video")
-                if not to_id or not room_id:
-                    continue
-                async with AsyncSessionLocal() as db:
-                    if not await _are_friends(user_id, to_id, db):
-                        continue
-                    result = await db.execute(select(User).where(User.id == user_id))
-                    caller = result.scalar_one_or_none()
-                await manager.send_personal(to_id, {
-                    "type": "call_invite",
-                    "from": user_id,
-                    "from_username": caller.username if caller else None,
-                    "room_id": room_id,
-                    "call_type": call_type,
-                })
-
-            elif msg_type == "call_answer":
-                to_id = data.get("to")
-                room_id = data.get("room_id")
-                if to_id and room_id:
-                    await manager.send_personal(to_id, {
-                        "type": "call_answer", "from": user_id, "room_id": room_id,
-                    })
-
-            elif msg_type == "call_reject":
-                to_id = data.get("to")
-                room_id = data.get("room_id")
-                if to_id and room_id:
-                    await manager.send_personal(to_id, {
-                        "type": "call_reject", "from": user_id, "room_id": room_id,
-                    })
-
-            elif msg_type == "call_end":
-                room_id = data.get("room_id")
-                if room_id:
-                    for member_id in manager.room_members(room_id):
-                        if member_id != user_id:
-                            await manager.send_personal(member_id, {
-                                "type": "call_end", "from": user_id, "room_id": room_id,
-                            })
-                    manager.leave_room(room_id, user_id)
-
-            elif msg_type == "meeting_invite":
-                to_ids = data.get("to_ids") or []
-                room_id = data.get("room_id")
-                if not room_id:
-                    continue
-                async with AsyncSessionLocal() as db:
-                    result = await db.execute(select(User).where(User.id == user_id))
-                    caller = result.scalar_one_or_none()
-                for to_id in to_ids:
-                    async with AsyncSessionLocal() as db:
-                        if not await _are_friends(user_id, to_id, db):
-                            continue
-                    await manager.send_personal(to_id, {
-                        "type": "meeting_invite",
-                        "from": user_id,
-                        "from_username": caller.username if caller else None,
-                        "room_id": room_id,
-                    })
-
-            elif msg_type == "join_room":
-                room_id = data.get("room_id")
-                if not room_id:
-                    continue
-                existing_members = set(manager.room_members(room_id))
-                manager.join_room(room_id, user_id)
-
-                async with AsyncSessionLocal() as db:
-                    result = await db.execute(select(User).where(User.id == user_id))
-                    joiner = result.scalar_one_or_none()
-                    members_info = []
-                    if existing_members:
-                        result = await db.execute(select(User).where(User.id.in_(existing_members)))
-                        for u in result.scalars().all():
-                            members_info.append({"id": u.id, "username": u.username})
-
-                # tell the joiner who's already in the room
-                await websocket.send_json({
-                    "type": "room_members", "room_id": room_id,
-                    "members": members_info,
-                })
-                # tell existing members someone joined
-                for member_id in existing_members:
-                    await manager.send_personal(member_id, {
-                        "type": "peer_joined", "from": user_id,
-                        "from_username": joiner.username if joiner else None,
-                        "room_id": room_id,
-                    })
-
-            elif msg_type == "leave_room":
-                room_id = data.get("room_id")
-                if room_id:
-                    manager.leave_room(room_id, user_id)
-                    for member_id in manager.room_members(room_id):
-                        await manager.send_personal(member_id, {
-                            "type": "peer_left", "from": user_id, "room_id": room_id,
-                        })
-
-            elif msg_type in ("webrtc_offer", "webrtc_answer", "webrtc_ice"):
-                to_id = data.get("to")
-                room_id = data.get("room_id")
-                if not to_id:
-                    continue
-                payload = {
-                    "type": msg_type, "from": user_id, "room_id": room_id,
-                }
-                if "sdp" in data:
-                    payload["sdp"] = data["sdp"]
-                if "candidate" in data:
-                    payload["candidate"] = data["candidate"]
-                await manager.send_personal(to_id, payload)
-
     except WebSocketDisconnect:
-        rooms_before = [r for r, members in manager.rooms.items() if user_id in members]
         manager.disconnect(user_id, websocket)
-        # Only tell peers the user left if they have no other active connections
-        # (background service WS reconnects must not end ongoing calls).
-        for room_id in rooms_before:
-            if user_id not in manager.room_members(room_id):
-                for member_id in manager.room_members(room_id):
-                    await manager.send_personal(member_id, {
-                        "type": "peer_left", "from": user_id, "room_id": room_id,
-                    })
     except Exception:
         manager.disconnect(user_id, websocket)
