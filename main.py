@@ -13,6 +13,7 @@ from app.utils.seed import seed_initial_data
 from sqlalchemy import text
 from app.models.focus import FocusSession  # noqa: F401 — ensures table is created
 from app.models.snippet import CodeSnippet  # noqa: F401 — ensures table is created
+from app.models.location_history import LocationHistory  # noqa: F401 — ensures table is created
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,6 +80,36 @@ async def run_migrations():
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
+    except Exception:
+        pass
+
+    try:
+        async with engine.begin() as conn:
+            is_sqlite = "sqlite" in str(engine.url)
+            if is_sqlite:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS location_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        accuracy REAL,
+                        recorded_at TEXT NOT NULL
+                    )
+                """))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_loc_hist_user_recorded ON location_history (user_id, recorded_at)"))
+            else:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS location_history (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        latitude DOUBLE PRECISION NOT NULL,
+                        longitude DOUBLE PRECISION NOT NULL,
+                        accuracy DOUBLE PRECISION,
+                        recorded_at TIMESTAMP NOT NULL
+                    )
+                """))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_loc_hist_user_recorded ON location_history (user_id, recorded_at)"))
     except Exception:
         pass
 
