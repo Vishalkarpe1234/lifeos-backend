@@ -118,12 +118,12 @@ async def list_users(db: AsyncSession = Depends(get_db), admin=Depends(get_curre
     for u in users:
         note_count = (await db.execute(select(func.count()).select_from(Note).where(Note.user_id == u.id))).scalar()
         result.append({
-            "id": u.id, "email": u.email, "is_admin": u.is_admin,
+            "id": u.id, "email": u.email, "username": u.username, "is_admin": u.is_admin,
             "is_active": u.is_active, "last_login": str(u.last_login) if u.last_login else None,
             "created_at": str(u.created_at), "note_count": note_count or 0,
             "location_permission": getattr(u, 'location_permission', False) or False,
         })
-    return {"items": result}
+    return result
 
 
 @router.post("/users", status_code=201)
@@ -183,8 +183,9 @@ async def get_user_notes(user_id: int, db: AsyncSession = Depends(get_db), admin
 
 class UserEdit(BaseModel):
     email: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
     is_active: Optional[bool] = None
-    full_name: Optional[str] = None
 
 @router.patch("/users/{user_id}", response_model=SuccessResponse)
 async def edit_user(user_id: int, data: UserEdit, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
@@ -193,14 +194,12 @@ async def edit_user(user_id: int, data: UserEdit, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="User not found")
     if data.email:
         user.email = data.email.lower().strip()
+    if data.username:
+        user.username = data.username.strip()
+    if data.password and len(data.password) >= 8:
+        user.hashed_password = get_password_hash(data.password)
     if data.is_active is not None:
         user.is_active = data.is_active
-    if data.full_name:
-        profile = (await db.execute(select(Profile).where(Profile.user_id == user_id))).scalar_one_or_none()
-        if profile:
-            profile.full_name = data.full_name
-        else:
-            db.add(Profile(user_id=user_id, full_name=data.full_name))
     await db.flush()
     return SuccessResponse(message="User updated")
 
@@ -321,6 +320,50 @@ async def admin_analytics(db: AsyncSession = Depends(get_db), current_user=Depen
     return {"total_users": total_users, "total_tasks": total_tasks, "completed_tasks": completed_tasks,
         "total_habits": total_habits, "total_journals": total_journals,
         "total_goals": total_goals, "total_projects": total_projects}
+
+
+@router.get("/users/{user_id}/locations")
+async def get_user_location_history(user_id: int, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.models.location_history import LocationHistory
+    items = (await db.execute(
+        select(LocationHistory)
+        .where(LocationHistory.user_id == user_id)
+        .order_by(LocationHistory.recorded_at.desc())
+        .limit(500)
+    )).scalars().all()
+    return {"items": [{"id": h.id, "latitude": h.latitude, "longitude": h.longitude,
+                       "accuracy": h.accuracy, "timestamp": h.recorded_at.isoformat()} for h in items]}
+
+
+@router.get("/users/{user_id}/location/at")
+async def get_user_location_at_time(user_id: int, timestamp: str, db: AsyncSession = Depends(get_db), admin=Depends(get_current_admin)):
+    from app.models.location_history import LocationHistory
+    from datetime import datetime
+    try:
+        ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        ts_naive = ts.replace(tzinfo=None)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid timestamp format")
+    before = (await db.execute(
+        select(LocationHistory).where(LocationHistory.user_id == user_id)
+        .where(LocationHistory.recorded_at <= ts_naive)
+        .order_by(LocationHistory.recorded_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    after = (await db.execute(
+        select(LocationHistory).where(LocationHistory.user_id == user_id)
+        .where(LocationHistory.recorded_at > ts_naive)
+        .order_by(LocationHistory.recorded_at.asc()).limit(1)
+    )).scalar_one_or_none()
+    if before and after:
+        diff_b = abs((ts_naive - before.recorded_at.replace(tzinfo=None)).total_seconds())
+        diff_a = abs((after.recorded_at.replace(tzinfo=None) - ts_naive).total_seconds())
+        result = before if diff_b <= diff_a else after
+    else:
+        result = before or after
+    if not result:
+        raise HTTPException(status_code=404, detail="No location data found for this time")
+    return {"latitude": result.latitude, "longitude": result.longitude,
+            "accuracy": result.accuracy, "timestamp": result.recorded_at.isoformat()}
 
 
 @router.get("/connect-overview")
